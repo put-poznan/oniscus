@@ -75,29 +75,31 @@ void add_segment(segment_t *segment, int counter) {
   }
 
   if (segment->pid == 0) {
+    next.id = segment->id + 1;
+    next.parent = segment;
+
+    add_segment(&next, counter - 1);
+
     segment->legs[0].segment = segment;
     segment->legs[1].segment = segment;
 
     add_leg(&segment->legs[0]);
     add_leg(&segment->legs[1]);
 
-    next.id = segment->id + 1;
-    next.parent = segment;
-
-    add_segment(&next, counter - 1);
-
     int msg = 0;
-    int ready = TRUE;
+    int ready = FALSE;
+    int leg = 0;
     while (read(segment->fd[0], &msg, MSG_S)) {
-      if (msg == (PARENT | LEFT)) {
-        ready = TRUE;
-        send(segment->legs[0], msg);
-        msg ^= LR_MASK;
-        send(next, msg);
+      if (msg & CHILD) {
+        /*printf("child %d of %d moved\n", next.id, segment->id);*/
+        if (leg == (msg & LR_MASK))
+          ready = FALSE;
+        send(*segment->parent, msg);
       }
-      if (msg == (PARENT | RIGHT)) {
+      if (msg & PARENT) {
+        send(segment->legs[!(msg & LEFT)], msg);
         ready = TRUE;
-        send(segment->legs[1], msg);
+        leg = msg & LR_MASK;
         msg ^= LR_MASK;
         send(next, msg);
       }
@@ -105,10 +107,7 @@ void add_segment(segment_t *segment, int counter) {
         printf("%s noga z członu %d %s\n", msg & LEFT ? "lewa" : "prawa", segment->id, ready ? "wykonała krok": "potknęła się");
         msg = (msg & LR_MASK) | CHILD;
         send(*segment->parent, msg);
-      }
-      if (msg & CHILD) {
-        ready = FALSE;
-        send(*segment->parent, msg);
+        fflush(stdout);
       }
       if (msg == EXIT) {
         send(next, msg);
@@ -136,11 +135,11 @@ int main(int argc, const char *argv[]) {
   message_t msg = PARENT | LEFT;
   char c;
   while (scanf("%c", &c)) {
-    if (c == 'k') {
+    if (c == 'm') {
       send(segment, msg);
       msg ^= LR_MASK;
     }
-    if (c == 'c') {
+    if (c == 'q') {
       int msg = EXIT;
       send(segment, msg);
       return 0;
